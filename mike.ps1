@@ -1,10 +1,5 @@
 #Stolen from someone who stole from someone
 
-# Optional parameter for password
-param (
-    [SecureString]$Password
-)
-
 # Beeeeeeg secure script
 $Error.Clear()
 $ErrorActionPreference = "Continue"
