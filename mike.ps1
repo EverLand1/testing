@@ -110,7 +110,9 @@ if ($DC) {
 #    New-GPLink -Name "domain-controller-settings" -Target ("OU=Domain Controllers," + $distinguishedName) -Order 1
 
     gpupdate /force
-} else {
+    Write-Host "[" -ForegroundColor white -NoNewLine; Write-Host "SUCCESS" -ForegroundColor green -NoNewLine; Write-Host "] GPUPDATE COMPLETE" -ForegroundColor white
+
+#} else {
     ## Applying client machine/member server security template (deprecated)
     # secedit /configure /db $env:windir\security\local.sdb /cfg 'conf\web-secpol.inf'
 
@@ -118,9 +120,9 @@ if ($DC) {
 #    $LGPOPath = Join-Path -Path $rootDir -ChildPath "tools\LGPO_30\LGPO.exe"
 #    & $LGPOPath /p (Join-Path -Path $ConfPath -ChildPath "localpolicy.PolicyRules")
 
-    gpupdate /force
+    #gpupdate /force
 }
-
+Write-Host "Mitigating CVEs" -ForegroundColor white
 # Mitigating CVEs
 # CVE-2021-36934 (HiveNightmare/SeriousSAM) - workaround (patch at https://msrc.microsoft.com/update-guide/vulnerability/CVE-2021-36934)
 icacls $env:windir\system32\config\*.* /inheritance:e | Out-Null
