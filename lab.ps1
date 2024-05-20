@@ -46,7 +46,6 @@ function Set-StaticIP {
         # Test basic network connectivity
         if (-not (Test-NetConnection -ComputerName "8.8.8.8" -Ping -WarningAction SilentlyContinue)) {
             Write-Error "No network connectivity."
-            exit
         }
 
     } catch {
