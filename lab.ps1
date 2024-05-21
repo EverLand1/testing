@@ -1,7 +1,5 @@
 Set-Location $PSScriptRoot
 
-#ADMINISTRATOR PRIVILEGES #####################################################
-#Checks if user is running the script with admin privileges
 $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 $isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
@@ -25,9 +23,9 @@ if (Test-Path $labFilePath) {
     exit
 }
 
+Set-TimeZone -Id $lab.TimeZone
 $TranscriptLogPath = "Transcript_$(Get-Date -Format "yyyy-MM-dd_HH-mm-ss").log"
 
-#PRINT CONFIGS #################################################################
 Write-Host "----------------------------------------------------------------------------------------`n"
 Write-Host "Domain Configuration:"
 Write-Host "DomainName: $($lab.DomainName)"
@@ -65,11 +63,6 @@ Write-Host "`n------------------------------------------------------------------
 Write-Host ("`n`nPlease look over these configuration settings. Waiting 20 seconds...")
 Start-Sleep -Seconds 20
 
-#TIMEZONE  #####################################################################
-Set-TimeZone -Id $lab.TimeZone
-
-
-#BEGIN LOGGING #################################################################
 if ($lab.logging)
 {
     Start-Transcript -Path $TranscriptLogPath
@@ -79,7 +72,6 @@ else {
     Write-Warning "Logging is disabled!"
 }
 
-#SET STATIC IP #################################################################
 function Set-StaticIP {
     param (
         [string]$IPAddress,
@@ -145,7 +137,7 @@ function Set-StaticIP {
 }
 
 
-function Create-ADUsers {
+function Add-ADUsers {
     param (
         [string]$UsersFilePath,
         [securestring]$AdminPassword,
@@ -153,52 +145,52 @@ function Create-ADUsers {
         [string]$DomainName
     )
     # Import the Active Directory module
-Import-Module ActiveDirectory
+    Import-Module ActiveDirectory
 
-# Create users from the text file
-if (Test-Path $lab.UsersFilePath) {
-    $users = Get-Content $lab.UsersFilePath
-    Write-Host "Adding Active Directory users to the domain... `nAdmins are denoted with a `* before username (no spaces)." -ForegroundColor Green
-    foreach ($user in $users) {
-        $isAdmin = $false
-        if ($user.StartsWith("*")) {
-            $isAdmin = $true
-            $user = $user.Substring(1).Trim()  # Remove the leading star and trim
-        }
-
-        $userDetails = $user -split ',' # Change the delimiter here
-        if ($userDetails.Length -ge 3) {
-            $username = $userDetails[0]
-            $firstName = $userDetails[1]
-            $lastName = $userDetails[2]
-            $password = if ($isAdmin) { ConvertTo-SecureString $lab.AdminPassword -AsPlainText -Force } elseif ($userDetails.Length -ge 4) { ConvertTo-SecureString $userDetails[3] -AsPlainText -Force } else { ConvertTo-SecureString $lab.UserPassword -AsPlainText -Force }
-
-            try {
-                New-ADUser `
-                    -Name "$firstName $lastName" `
-                    -GivenName $firstName `
-                    -Surname $lastName `
-                    -SamAccountName $username `
-                    -UserPrincipalName "$username@$($lab.DomainName)" `
-                    -AccountPassword $password `
-                    -Enabled $true `
-                    -PasswordNeverExpires $true `
-                    -Path "CN=Users,DC=$($lab.DomainName -split '\.')[0],DC=$($lab.DomainName -split '\.')[1]" `
-                    -ChangePasswordAtLogon ($isAdmin -eq $false) `
-                    -ErrorAction Stop
-                
-                Write-Output "User $username created successfully." -ForegroundColor Green
-            } catch {
-                Write-Error "Failed to create user $username. Error: $_" -ForegroundColor Red
+    # Create users from the text file
+    if (Test-Path $lab.UsersFilePath) {
+        $users = Get-Content $lab.UsersFilePath
+        Write-Host "Adding Active Directory users to the domain... `nAdmins are denoted with a `* before username (no spaces)." -ForegroundColor Green
+        foreach ($user in $users) {
+            $isAdmin = $false
+            if ($user.StartsWith("*")) {
+                $isAdmin = $true
+                $user = $user.Substring(1).Trim()  # Remove the leading star and trim
             }
-        } else {
-            Write-Error "Invalid format in users file for line: $user" -ForegroundColor Red
+
+            $userDetails = $user -split ',' # Change the delimiter here
+            if ($userDetails.Length -ge 3) {
+                $username = $userDetails[0]
+                $firstName = $userDetails[1]
+                $lastName = $userDetails[2]
+                $password = if ($isAdmin) { ConvertTo-SecureString $lab.AdminPassword -AsPlainText -Force } elseif ($userDetails.Length -ge 4) { ConvertTo-SecureString $userDetails[3] -AsPlainText -Force } else { ConvertTo-SecureString $lab.UserPassword -AsPlainText -Force }
+
+                try {
+                    New-ADUser `
+                        -Name "$firstName $lastName" `
+                        -GivenName $firstName `
+                        -Surname $lastName `
+                        -SamAccountName $username `
+                        -UserPrincipalName "$username@$($lab.DomainName)" `
+                        -AccountPassword $password `
+                        -Enabled $true `
+                        -PasswordNeverExpires $true `
+                        -Path "CN=Users,DC=$($lab.DomainName -split '\.')[0],DC=$($lab.DomainName -split '\.')[1]" `
+                        -ChangePasswordAtLogon ($isAdmin -eq $false) `
+                        -ErrorAction Stop
+                    
+                    Write-Output "User $username created successfully." -ForegroundColor Green
+                } catch {
+                    Write-Error "Failed to create user $username. Error: $_" -ForegroundColor Red
+                }
+            } else {
+                Write-Error "Invalid format in users file for line: $user" -ForegroundColor Red
+            }
         }
+    } else {
+        Write-Host "Users file not found: $($lab.UsersFilePath)" -ForegroundColor Red
+        Write-Host "Continuing Domain Controller setup without AD Users..." -ForegroundColor Yellow
     }
-} else {
-    Write-Error "Users file not found: $($lab.UsersFilePath)" -ForegroundColor Red
-    #How to proceed from here
-}
 }
 
 
@@ -245,31 +237,52 @@ function Install-ADForest {
     }
 }
 
+function Install-WindowsFeatures {
+    param (
+        [string[]]$Features
+    )
 
-# Convert the password to a secure string
-$SecureSafeModePassword = ConvertTo-SecureString $lab.SafeModeAdministratorPassword -AsPlainText -Force
-
-# Set static IP address
-Set-StaticIP -IPAddress $lab.IPAddress -SubnetMask $lab.SubnetMask -DefaultGateway $lab.DefaultGateway -DNSServers $lab.DNSServers
-
-# Install the AD DS role and DNS role if not already installed
-$features = $log.WindowsFeatures
-foreach ($feature in $features) {
-    try {
-        if (-not (Get-WindowsFeature -Name $feature).Installed) {
-            Install-WindowsFeature -Name $feature -IncludeManagementTools -Confirm:$false -ErrorAction Stop
-            Write-Host "$feature installed successfully." -ForegroundColor Green
+    foreach ($feature in $Features) {
+        try {
+            if (-not (Get-WindowsFeature -Name $feature).Installed) {
+                Install-WindowsFeature -Name $feature -IncludeManagementTools -Confirm:$false -ErrorAction Stop
+                Write-Host "$feature installed successfully." -ForegroundColor Green
+            }
+            else {
+                Write-Host "$feature already installed. Moving on..." -ForegroundColor Yellow
+            }
         }
-        else
-        {
-            Write-Host "$feature already installed. Moving on..."-ForegroundColor Yellow
+        catch {
+            Write-Error "Failed to install $feature. Error: $_" -ForegroundColor Red
+            exit
         }
-    } catch {
-        Write-Error "Failed to install $feature. Error: $_" -ForegroundColor Red
-        exit
     }
 }
 
+
+Set-StaticIP `
+    -IPAddress $lab.IPAddress `
+    -SubnetMask $lab.SubnetMask `
+    -DefaultGateway $lab.DefaultGateway `
+    -DNSServers $lab.DNSServers 
+
+Add-ADUsers `
+    -UsersFilePath $lab.UsersFilePath `
+    -AdminPassword (ConvertTo-SecureString $lab.AdminPassword -AsPlainText -Force) `
+    -UserPassword (ConvertTo-SecureString $lab.UserPassword -AsPlainText -Force) `
+    -DomainName $lab.DomainName
+
+Install-ADForest `
+    -DomainName $lab.DomainName `
+    -NetBIOSName $lab.NetBIOSName `
+    -SafeModeAdministratorPassword (ConvertTo-SecureString $lab.SafeModeAdministratorPassword -AsPlainText -Force) `
+    -InstallDNS $lab.InstallDNS `
+    -DatabasePath $lab.DatabasePath `
+    -LogPath $lab.LogPath `
+    -SysvolPath $lab.SysvolPath `
+    -ForestMode $lab.ForestMode
+
+Install-WindowsFeatures -Features $lab.WindowsFeatures
 
 try {
     Set-DnsServerForwarder -IPAddress $lab.DNSForwarders -UseReversibleEncryption
