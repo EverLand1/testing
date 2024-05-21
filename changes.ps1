@@ -44,3 +44,74 @@ if ($isAdmin) {
 
     $newHostname = "$($lab.hostname)"
     Rename-Computer -NewName $newHostname -Force -Restart
+
+
+
+
+
+
+
+
+
+
+
+
+# Check domain controller services
+Get-Service -Name NTDS, Kdc, DnsServer, NetLogon | Select-Object Name, Status
+
+# Check domain controller event logs
+Get-EventLog -LogName System, Application, Directory Service -EntryType Error, Warning -Newest 100 | Format-List
+
+# Check domain controller replication
+repadmin /replsummary
+
+# Check domain controller DNS
+Get-DnsServerDiagnostics
+
+# Check domain controller networking
+Get-NetIPConfiguration
+Get-NetIPAddress
+Get-NetRoute
+Get-NetTCPConnection
+Get-NetFirewallRule
+
+# Check domain controller Active Directory
+dcdiag /v
+dcdiag /test:DNS
+repadmin /showrepl
+nltest /dsgetdc:mydomain.com
+
+
+
+
+diag /v
+$dcdiagOutput = dcdiag /v
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning "DCDiag verbose test failed with exit code $LASTEXITCODE"
+}
+
+# Test dcdiag /test:DNS
+$dcdiagDNSOutput = dcdiag /test:DNS
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning "DCDiag DNS test failed with exit code $LASTEXITCODE"
+}
+
+# Test repadmin /showrepl
+$repadminOutput = repadmin /showrepl
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning "Repadmin showrepl test failed with exit code $LASTEXITCODE"
+}
+
+# Test nltest /dsgetdc:mydomain.com
+$nltestOutput = nltest /dsgetdc:mydomain.com
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning "Nltest dsgetdc test failed with exit code $LASTEXITCODE"
+}
+
+# Test critical domain controller services
+$services = Get-Service -Name NTDS, Kdc, DnsServer, NetLogon
+foreach ($service in $services) {
+    if ($service.Status -ne 'Running') {
+        Write-Warning "$($service.Name) service is not running"
+    }
+}

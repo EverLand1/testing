@@ -300,6 +300,9 @@ if ($lab.RebootOnCompletion) {
 # Wait for Active Directory services to start
 Start-Sleep -Seconds 120
 
+
+
+function Test-Diagnostics {
 # Post-installation verification
 try {
     $dcdiagOutput = dcdiag
@@ -313,6 +316,9 @@ try {
     Write-Error "Failed to run dcdiag. Error: $_" -ForegroundColor Red
     exit
 }
+
+}
+
 
 
 
