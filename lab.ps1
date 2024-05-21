@@ -1,5 +1,6 @@
 Set-Location $PSScriptRoot
 
+#ADMINISTRATOR PRIVILEGES #####################################################
 #Checks if user is running the script with admin privileges
 $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 $isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -13,6 +14,7 @@ if ($isAdmin) {
 
 # RUNONCE HKLM ################################################################
 
+#GET CONFIG FILE ##############################################################
 $labFilePath = "lab.json"
 
 if (Test-Path $labFilePath) {
@@ -23,6 +25,8 @@ if (Test-Path $labFilePath) {
     exit
 }
 
+#PRINT CONFIGS #################################################################
+Write-Host "----------------------------------------------------------------------------------------`n"
 Write-Host "Domain Configuration:"
 Write-Host "DomainName: $($lab.DomainName)"
 Write-Host "NetBIOSName: $($lab.NetBIOSName)"
@@ -55,13 +59,16 @@ Write-Host "RebootOnCompletion: $($lab.RebootOnCompletion)"
 Write-Host "Logging: $($lab.Logging)"
 Write-Host "NetworkAdapter: $($lab.NetworkAdapter)"
 Write-Host "TranscriptLogPath: $($lab.TranscriptLogPath)"
-
+Write-Host "`n----------------------------------------------------------------------------------------"
 Write-Host ("`n`nPlease look over these configuration settings. Waiting 20 seconds...")
 Start-Sleep -Seconds 20
 
+#TIMEZONE  #####################################################################
 Set-TimeZone -Id $lab.TimeZone
 
-# DYNAMIC TRANSCRIPT NAME ######################################################
+
+#BEGIN LOGGING #################################################################
+# dyanmic name
 if ($lab.logging)
 {
     Start-Transcript -Path $lab.TranscriptLogPath
@@ -71,6 +78,7 @@ else {
     Write-Warning "Logging is disabled!"
 }
 
+#SET STATIC IP #################################################################
 function Set-StaticIP {
     param (
         [string]$IPAddress,
