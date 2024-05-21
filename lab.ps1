@@ -1,8 +1,29 @@
 Set-Location $PSScriptRoot
 
-$lab = Get-Content "lab.json" | ConvertFrom-JSON
+#Checks if user is running the script with admin privileges
+$currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+$isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
-# Start transcript logging
+if ($isAdmin) {
+    Write-Host "You are running with administrative privileges. Proceeding with Domain Controller Setup..." -ForegroundColor Green
+} else {
+    Write-Host "The current user does not have administrative privileges. Please run this script with administrative privileges." -ForegroundColor Red
+    Exit
+}
+
+# RUNONCE HKLM ################################################################
+
+$labFilePath = "lab.json"
+
+if (Test-Path $labFilePath) {
+    $lab = Get-Content $labFilePath | ConvertFrom-Json
+    Write-Host ("Successfully retrieved configuration settings from lab.json...") -ForegroundColor Green
+} else {
+    Write-Error "File not found: $labFilePath. Exiting program..." -ForegroundColor Red
+    exit
+}
+
+# DYNAMIC TRANSCRIPT NAME ######################################################
 Start-Transcript -Path $lab.TranscriptLogPath
 
 function Set-StaticIP {
@@ -106,7 +127,7 @@ try {
         -NoRebootOnCompletion:$false -ErrorAction Stop
     Write-Host "Forest installation completed successfully." -ForegroundColor Green
 } catch {
-    Write-Error "Failed to install AD DS Forest. Error: $_"
+    Write-Error "Failed to install AD DS Forest. Error: $_" -ForegroundColor Red
     exit
 }
 
@@ -130,13 +151,13 @@ Start-Sleep -Seconds 120
 try {
     $dcdiagOutput = dcdiag
     if ($dcdiagOutput -notmatch "passed") {
-        Write-Error "DC promotion encountered issues. Please review the dcdiag output."
+        Write-Error "DC promotion encountered issues. Please review the dcdiag output." -ForegroundColor Red
         Write-Output $dcdiagOutput
         exit
     }
-    Write-Output "Domain Controller promotion completed successfully."
+    Write-Output "Domain Controller promotion completed successfully." -ForegroundColor Green
 } catch {
-    Write-Error "Failed to run dcdiag. Error: $_"
+    Write-Error "Failed to run dcdiag. Error: $_" -ForegroundColor Red
     exit
 }
 
@@ -146,7 +167,7 @@ Import-Module ActiveDirectory
 # Create users from the text file
 if (Test-Path $lab.UsersFilePath) {
     $users = Get-Content $lab.UsersFilePath
-    Write-Host "Admins are denoted with a `* before username (no spaces)."
+    Write-Host "Adding Active Directory users to the domain... `nAdmins are denoted with a `* before username (no spaces)."
     foreach ($user in $users) {
         $isAdmin = $false
         if ($user.StartsWith("*")) {
@@ -175,19 +196,20 @@ if (Test-Path $lab.UsersFilePath) {
                     -ChangePasswordAtLogon ($isAdmin -eq $false) `
                     -ErrorAction Stop
                 
-                Write-Output "User $username created successfully."
+                Write-Output "User $username created successfully." -ForegroundColor Green
             } catch {
-                Write-Error "Failed to create user $username. Error: $_"
+                Write-Error "Failed to create user $username. Error: $_" -ForegroundColor Red
             }
         } else {
-            Write-Error "Invalid format in users file for line: $user"
+            Write-Error "Invalid format in users file for line: $user" -ForegroundColor Red
         }
     }
 } else {
-    Write-Error "Users file not found: $($lab.UsersFilePath)"
+    Write-Error "Users file not found: $($lab.UsersFilePath)" -ForegroundColor Red
+    #How to proceed from here
 }
 
 # Stop transcript logging
 Stop-Transcript
 
-Write-Host "Script has completed! The transcript is available at $($lab.TranscriptLogPath)"
+Write-Host "Script has completed! The transcript is available at $($lab.TranscriptLogPath)" -ForegroundColor Green
