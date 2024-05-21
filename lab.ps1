@@ -23,8 +23,53 @@ if (Test-Path $labFilePath) {
     exit
 }
 
+Write-Host "Domain Configuration:"
+Write-Host "DomainName: $($lab.DomainName)"
+Write-Host "NetBIOSName: $($lab.NetBIOSName)"
+
+Write-Host "`nServer Configuration:"  
+Write-Host "Hostname: $($lab.Hostname)"
+Write-Host "IPAddress: $($lab.IPAddress)"
+Write-Host "SubnetMask: $($lab.SubnetMask)"
+Write-Host "DefaultGateway: $($lab.DefaultGateway)"
+Write-Host "DNSServers: $($lab.DNSServers -join ', ')"
+Write-Host "DNSForwarders: $($lab.DNSForwarders -join ', ')"
+
+Write-Host "`nDirectory Services Configuration:"
+Write-Host "DatabasePath: $($lab.DatabasePath)"
+Write-Host "LogPath: $($lab.LogPath)"
+Write-Host "SysvolPath: $($lab.SysvolPath)"
+Write-Host "ForestMode: $($lab.ForestMode)"
+
+Write-Host "`nSecurity Configuration:"
+Write-Host "SafeModeAdministratorPassword: $($lab.SafeModeAdministratorPassword)"
+Write-Host "UserPassword: $($lab.UserPassword)"
+Write-Host "AdminPassword: $($lab.AdminPassword)"
+
+Write-Host "`nOther Configuration:"
+Write-Host "UsersFilePath: $($lab.UsersFilePath)"
+Write-Host "WindowsFeatures: $($lab.WindowsFeatures -join ', ')"
+Write-Host "InstallDNS: $($lab.InstallDNS)"
+Write-Host "TimeZone: $($lab.TimeZone)"
+Write-Host "RebootOnCompletion: $($lab.RebootOnCompletion)"
+Write-Host "Logging: $($lab.Logging)"
+Write-Host "NetworkAdapter: $($lab.NetworkAdapter)"
+Write-Host "TranscriptLogPath: $($lab.TranscriptLogPath)"
+
+Write-Host ("`n`nPlease look over these configuration settings. Waiting 20 seconds...")
+Start-Sleep -Seconds 20
+
+Set-TimeZone -Id $lab.TimeZone
+
 # DYNAMIC TRANSCRIPT NAME ######################################################
-Start-Transcript -Path $lab.TranscriptLogPath
+if ($lab.logging)
+{
+    Start-Transcript -Path $lab.TranscriptLogPath
+    Write-Host("Logging enabled to  $($lab.TranscriptLogPath)")
+}
+else {
+    Write-Warning "Logging is disabled!"
+}
 
 function Set-StaticIP {
     param (
@@ -64,19 +109,24 @@ function Set-StaticIP {
             -InterfaceAlias $networkAdapter.Name `
             -ServerAddresses $DNSServers -ErrorAction Stop
 
-        Write-Output "Static IP configuration set successfully." -ForegroundColor Green
+        Write-Output "Static IP configuration set successfully. `nTesting network connection..." -ForegroundColor Green
 
         # Test basic network connectivity
         try {
-            $ping = Test-Connection -ComputerName "8.8.8.8" -Count 1 -ErrorAction Stop
+            $ping = Test-Connection -ComputerName "$DefaultGateway" -Count 1 -ErrorAction Stop
             if ($ping.StatusCode -eq 0) {
                 Write-Host "Network connectivity succeeded!" -ForegroundColor Green
             } else {
-                Write-Error "No network connectivity. Exiting program now..."  -ForegroundColor Red
-                exit
+                Write-Error "No network connectivity."  -ForegroundColor Red
+            }
+            $ping = Test-Connection -ComputerName "8.8.8.8" -Count 1 -ErrorAction Stop
+            if ($ping.StatusCode -eq 0) {
+                Write-Host "Internet connectivity succeeded!" -ForegroundColor Green
+            } else {
+                Write-Error "No internet connectivity."  -ForegroundColor Red
             }
 } catch {
-    Write-Error "No network connectivity. Exiting Program now..." -ForegroundColor Red
+    Write-Error "No network connectivity. Exiting program now..." -ForegroundColor Red
     exit
 }
     } catch {
@@ -92,7 +142,7 @@ $SecureSafeModePassword = ConvertTo-SecureString $lab.SafeModeAdministratorPassw
 Set-StaticIP -IPAddress $lab.IPAddress -SubnetMask $lab.SubnetMask -DefaultGateway $lab.DefaultGateway -DNSServers $lab.DNSServers
 
 # Install the AD DS role and DNS role if not already installed
-$features = @("AD-Domain-Services", "DNS")
+$features = $log.WindowsFeatures
 foreach ($feature in $features) {
     try {
         if (-not (Get-WindowsFeature -Name $feature).Installed) {
@@ -129,6 +179,14 @@ try {
 } catch {
     Write-Error "Failed to install AD DS Forest. Error: $_" -ForegroundColor Red
     exit
+}
+
+# Change the hostname of the domain controller
+try {
+    Rename-Computer -NewName $lab.Hostname -Force -Restart
+    Write-Host "Domain controller hostname changed to $($lab.Hostname). The system will now restart." -ForegroundColor Green
+} catch {
+    Write-Error "Failed to change the hostname. Error: $_" -ForegroundColor Red
 }
 
 try {
@@ -210,6 +268,10 @@ if (Test-Path $lab.UsersFilePath) {
 }
 
 # Stop transcript logging
-Stop-Transcript
+try {
+    Stop-Transcript
+} catch {
+    Write-Warning "Logging was disabled in configuration" -ForegroundColor Yellow
+}
 
 Write-Host "Script has completed! The transcript is available at $($lab.TranscriptLogPath)" -ForegroundColor Green

@@ -1,6 +1,7 @@
 {
   "DomainName": "yourdomain.com",
   "NetBIOSName": "YOURDOMAIN",
+  "Hostname": "DC01",
   "IPAddress": "192.168.1.10",
   "SubnetMask": "255.255.255.0",
   "DefaultGateway": "192.168.1.1",
@@ -13,15 +14,21 @@
     "8.8.8.8"
   ],  
   "UsersFilePath": "C:\\Users\\Administrator\\Downloads\\users.txt",
+  "WindowsFeatures": [
+    "AD-Domain-Services",
+    "RSAT-AD-Tools"
+  ],
   "SafeModeAdministratorPassword": "Password1!",
   "UserPassword": "Password1!",
   "AdminPassword": "Password1!",
   "InstallDNS": true,
+  "TimeZone": "Eastern Standard Time",
   "DatabasePath": "C:\\Windows\\NTDS",
   "LogPath": "C:\\Windows\\NTDS",
   "SysvolPath": "C:\\Windows\\SYSVOL",
   "ForestMode": "WinThreshold",
   "RebootOnCompletion": true,
+  "Logging" : true,
   "NetworkAdapter": "",
   "TranscriptLogPath": ".\\SetupTranscript.log"
 }
