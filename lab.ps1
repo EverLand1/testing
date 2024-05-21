@@ -25,6 +25,8 @@ if (Test-Path $labFilePath) {
     exit
 }
 
+$TranscriptLogPath = "Transcript_$(Get-Date -Format "yyyy-MM-dd_HH-mm-ss").log"
+
 #PRINT CONFIGS #################################################################
 Write-Host "----------------------------------------------------------------------------------------`n"
 Write-Host "Domain Configuration:"
@@ -58,7 +60,7 @@ Write-Host "TimeZone: $($lab.TimeZone)"
 Write-Host "RebootOnCompletion: $($lab.RebootOnCompletion)"
 Write-Host "Logging: $($lab.Logging)"
 Write-Host "NetworkAdapter: $($lab.NetworkAdapter)"
-Write-Host "TranscriptLogPath: $($lab.TranscriptLogPath)"
+Write-Host "TranscriptLogPath: $TranscriptLogPath"
 Write-Host "`n----------------------------------------------------------------------------------------"
 Write-Host ("`n`nPlease look over these configuration settings. Waiting 20 seconds...")
 Start-Sleep -Seconds 20
@@ -68,11 +70,10 @@ Set-TimeZone -Id $lab.TimeZone
 
 
 #BEGIN LOGGING #################################################################
-# dyanmic name
 if ($lab.logging)
 {
-    Start-Transcript -Path $lab.TranscriptLogPath
-    Write-Host("Logging enabled to  $($lab.TranscriptLogPath)")
+    Start-Transcript -Path $TranscriptLogPath
+    Write-Host("Logging being sent to  $TranscriptLogPath")
 }
 else {
     Write-Warning "Logging is disabled!"
@@ -87,7 +88,7 @@ function Set-StaticIP {
         [string[]]$DNSServers
     )
     if (-not (Test-NetConnection -ComputerName "8.8.8.8" -InformationLevel Quiet)) {
-    Write-Host "Prior Network Configuration Failed. `n`n Statically Configuring Address with the Given Config...`n"
+    Write-Host "Prior Network Configuration Failed. `n`n Statically configuring address with the given configuration settings...`n"
     }
     else
     {
@@ -133,107 +134,31 @@ function Set-StaticIP {
             } else {
                 Write-Error "No internet connectivity."  -ForegroundColor Red
             }
-} catch {
-    Write-Error "No network connectivity. Exiting program now..." -ForegroundColor Red
-    exit
-}
+            } catch {
+                Write-Error "No network connectivity. Exiting program now..." -ForegroundColor Red
+                exit
+            }
     } catch {
         Write-Error "Failed to set static IP configuration. Error: $_" -ForegroundColor Red
         exit
     }
 }
 
-# Convert the password to a secure string
-$SecureSafeModePassword = ConvertTo-SecureString $lab.SafeModeAdministratorPassword -AsPlainText -Force
 
-# Set static IP address
-Set-StaticIP -IPAddress $lab.IPAddress -SubnetMask $lab.SubnetMask -DefaultGateway $lab.DefaultGateway -DNSServers $lab.DNSServers
-
-# Install the AD DS role and DNS role if not already installed
-$features = $log.WindowsFeatures
-foreach ($feature in $features) {
-    try {
-        if (-not (Get-WindowsFeature -Name $feature).Installed) {
-            Install-WindowsFeature -Name $feature -IncludeManagementTools -Confirm:$false -ErrorAction Stop
-            Write-Host "$feature installed successfully." -ForegroundColor Green
-        }
-        else
-        {
-            Write-Host "$feature already installed. Moving on..."-ForegroundColor Yellow
-        }
-    } catch {
-        Write-Error "Failed to install $feature. Error: $_" -ForegroundColor Red
-        exit
-    }
-}
-
-# Import the AD DS Deployment module
-Import-Module ADDSDeployment
-
-# Install a new forest
-try {
-    Install-ADDSForest `
-        -DomainName $lab.DomainName `
-        -DomainNetbiosName $lab.NetBIOSName `
-        -SafeModeAdministratorPassword $SecureSafeModePassword `
-        -InstallDNS:$lab.InstallDNS `
-        -DatabasePath $lab.DatabasePath `
-        -LogPath $lab.LogPath `
-        -SysvolPath $lab.SysvolPath `
-        -ForestMode $lab.ForestMode `
-        -Force:$true `
-        -NoRebootOnCompletion:$false -ErrorAction Stop
-    Write-Host "Forest installation completed successfully." -ForegroundColor Green
-} catch {
-    Write-Error "Failed to install AD DS Forest. Error: $_" -ForegroundColor Red
-    exit
-}
-
-# Change the hostname of the domain controller
-try {
-    Rename-Computer -NewName $lab.Hostname -Force -Restart
-    Write-Host "Domain controller hostname changed to $($lab.Hostname). The system will now restart." -ForegroundColor Green
-} catch {
-    Write-Error "Failed to change the hostname. Error: $_" -ForegroundColor Red
-}
-
-try {
-    Set-DnsServerForwarder -IPAddress $lab.DNSForwarders -UseReversibleEncryption
-    Write-Host "DNS forwarders configured successfully." -ForegroundColor Green
-} catch {
-    Write-Error "Failed to configure DNS forwarders. Error: $_" -ForegroundColor Red
-}
-
-# Reboot the server if required
-if ($lab.RebootOnCompletion) {
-    Restart-Computer
-    Start-Sleep -Seconds 60  # Wait for the system to reboot and services to start
-}
-
-# Wait for Active Directory services to start
-Start-Sleep -Seconds 120
-
-# Post-installation verification
-try {
-    $dcdiagOutput = dcdiag
-    if ($dcdiagOutput -notmatch "passed") {
-        Write-Error "DC promotion encountered issues. Please review the dcdiag output." -ForegroundColor Red
-        Write-Output $dcdiagOutput
-        exit
-    }
-    Write-Output "Domain Controller promotion completed successfully." -ForegroundColor Green
-} catch {
-    Write-Error "Failed to run dcdiag. Error: $_" -ForegroundColor Red
-    exit
-}
-
-# Import the Active Directory module
+function Create-ADUsers {
+    param (
+        [string]$UsersFilePath,
+        [securestring]$AdminPassword,
+        [securestring]$UserPassword,
+        [string]$DomainName
+    )
+    # Import the Active Directory module
 Import-Module ActiveDirectory
 
 # Create users from the text file
 if (Test-Path $lab.UsersFilePath) {
     $users = Get-Content $lab.UsersFilePath
-    Write-Host "Adding Active Directory users to the domain... `nAdmins are denoted with a `* before username (no spaces)."
+    Write-Host "Adding Active Directory users to the domain... `nAdmins are denoted with a `* before username (no spaces)." -ForegroundColor Green
     foreach ($user in $users) {
         $isAdmin = $false
         if ($user.StartsWith("*")) {
@@ -274,6 +199,109 @@ if (Test-Path $lab.UsersFilePath) {
     Write-Error "Users file not found: $($lab.UsersFilePath)" -ForegroundColor Red
     #How to proceed from here
 }
+}
+
+
+function Install-ADForest {
+    param (
+        [string]$DomainName,
+        [string]$NetBIOSName,
+        [securestring]$SafeModeAdministratorPassword,
+        [bool]$InstallDNS,
+        [string]$DatabasePath,
+        [string]$LogPath,
+        [string]$SysvolPath,
+        [string]$ForestMode
+    )
+
+    # Import the AD DS Deployment module
+    Import-Module ADDSDeployment
+
+    # Install a new forest
+    try {
+        Install-ADDSForest `
+            -DomainName $lab.DomainName `
+            -DomainNetbiosName $lab.NetBIOSName `
+            -SafeModeAdministratorPassword $SecureSafeModePassword `
+            -InstallDNS:$lab.InstallDNS `
+            -DatabasePath $lab.DatabasePath `
+            -LogPath $lab.LogPath `
+            -SysvolPath $lab.SysvolPath `
+            -ForestMode $lab.ForestMode `
+            -Force:$true `
+            -NoRebootOnCompletion:$false -ErrorAction Stop
+        Write-Host "Forest installation completed successfully." -ForegroundColor Green
+    } catch {
+        Write-Error "Failed to install AD DS Forest. Error: $_" -ForegroundColor Red
+        exit
+    }
+
+    # Change the hostname of the domain controller
+    try {
+        Rename-Computer -NewName $lab.Hostname -Force -Restart
+        Write-Host "Domain controller hostname changed to $($lab.Hostname). The system will now restart." -ForegroundColor Green
+    } catch {
+        Write-Error "Failed to change the hostname. Error: $_" -ForegroundColor Red
+    }
+}
+
+
+# Convert the password to a secure string
+$SecureSafeModePassword = ConvertTo-SecureString $lab.SafeModeAdministratorPassword -AsPlainText -Force
+
+# Set static IP address
+Set-StaticIP -IPAddress $lab.IPAddress -SubnetMask $lab.SubnetMask -DefaultGateway $lab.DefaultGateway -DNSServers $lab.DNSServers
+
+# Install the AD DS role and DNS role if not already installed
+$features = $log.WindowsFeatures
+foreach ($feature in $features) {
+    try {
+        if (-not (Get-WindowsFeature -Name $feature).Installed) {
+            Install-WindowsFeature -Name $feature -IncludeManagementTools -Confirm:$false -ErrorAction Stop
+            Write-Host "$feature installed successfully." -ForegroundColor Green
+        }
+        else
+        {
+            Write-Host "$feature already installed. Moving on..."-ForegroundColor Yellow
+        }
+    } catch {
+        Write-Error "Failed to install $feature. Error: $_" -ForegroundColor Red
+        exit
+    }
+}
+
+
+try {
+    Set-DnsServerForwarder -IPAddress $lab.DNSForwarders -UseReversibleEncryption
+    Write-Host "DNS forwarders configured successfully." -ForegroundColor Green
+} catch {
+    Write-Error "Failed to configure DNS forwarders. Error: $_" -ForegroundColor Red
+}
+
+# Reboot the server if required
+if ($lab.RebootOnCompletion) {
+    Restart-Computer
+    Start-Sleep -Seconds 60  # Wait for the system to reboot and services to start
+}
+
+# Wait for Active Directory services to start
+Start-Sleep -Seconds 120
+
+# Post-installation verification
+try {
+    $dcdiagOutput = dcdiag
+    if ($dcdiagOutput -notmatch "passed") {
+        Write-Error "DC promotion encountered issues. Please review the dcdiag output." -ForegroundColor Red
+        Write-Output $dcdiagOutput
+        exit
+    }
+    Write-Output "Domain Controller promotion completed successfully." -ForegroundColor Green
+} catch {
+    Write-Error "Failed to run dcdiag. Error: $_" -ForegroundColor Red
+    exit
+}
+
+
 
 # Stop transcript logging
 try {
@@ -282,4 +310,4 @@ try {
     Write-Warning "Logging was disabled in configuration" -ForegroundColor Yellow
 }
 
-Write-Host "Script has completed! The transcript is available at $($lab.TranscriptLogPath)" -ForegroundColor Green
+Write-Host "Script has completed! The transcript is available at $TranscriptLogPath" -ForegroundColor Green

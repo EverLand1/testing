@@ -7,17 +7,14 @@
   "DefaultGateway": "192.168.1.1",
   "DNSServers": [
     "192.168.1.10",
-    "1.1.1.1"
-  ],
+    "1.1.1.1"],
   "DNSForwarders": [
     "1.1.1.1",
-    "8.8.8.8"
-  ],  
-  "UsersFilePath": "C:\\Users\\Administrator\\Downloads\\users.txt",
+    "8.8.8.8"],  
   "WindowsFeatures": [
     "AD-Domain-Services",
-    "RSAT-AD-Tools"
-  ],
+    "RSAT-AD-Tools"],
+  "UsersFilePath": "C:\\Users\\Administrator\\Downloads\\users.txt",
   "SafeModeAdministratorPassword": "Password1!",
   "UserPassword": "Password1!",
   "AdminPassword": "Password1!",
@@ -29,6 +26,5 @@
   "ForestMode": "WinThreshold",
   "RebootOnCompletion": true,
   "Logging" : true,
-  "NetworkAdapter": "",
-  "TranscriptLogPath": ".\\SetupTranscript.log"
+  "NetworkAdapter": ""
 }
