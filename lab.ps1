@@ -1,17 +1,7 @@
 Set-Location $PSScriptRoot
 
 $lab = Get-Content "lab.json" | ConvertFrom-JSON
-<#$lab = Get-Content ".\lab.conf" | ConvertFrom-StringData
 
-$lab = @{}
-$lines = Get-Content "lab.conf"
-foreach ($line in $lines) {
-    $parts = $line.Split('= ', 2)
-    if ($parts.Length -eq 2) {
-        $lab[$parts[0].Trim()] = $parts[1].Trim()
-    }
-}
-#>
 # Start transcript logging
 Start-Transcript -Path $lab.TranscriptLogPath
 
@@ -22,34 +12,54 @@ function Set-StaticIP {
         [string]$DefaultGateway,
         [string[]]$DNSServers
     )
-
+    if (-not (Test-NetConnection -ComputerName "8.8.8.8" -InformationLevel Quiet)) {
+    Write-Host "Prior Network Configuration Failed. `n`n Statically Configuring Address with the Given Config...`n"
+    }
+    else
+    {
+        #Check if static address
+        #Ask about network configuration
+        Write-Host "Prior Network Configuration Succeeded"
+    }
     $networkAdapter = Get-NetAdapter | Where-Object {$_.Status -eq 'Up'} | Select-Object -First 1
 
     if ($null -eq $networkAdapter) {
-        Write-Error "No active network adapter found."
+        Write-Error "No active network adapter found. Exiting program now..."-ForegroundColor Red
         exit
     }
  
     try {
-        New-NetIPAddress `
-            -InterfaceAlias $networkAdapter.Name `
-            -IPAddress $IPAddress `
-            -PrefixLength (32 - [math]::Log([math]::Pow([int][convert]::ToUInt32([convert]::ToUInt32("1".PadLeft($SubnetMask.Split(".").Count() * 8, "1"), 2) -bxor -1), 10)) / [math]::Log(2)) `
-            -DefaultGateway $DefaultGateway -ErrorAction Stop
+        $binarySubnetMask = ([System.Net.IPAddress]::Parse($SubnetMask).GetAddressBytes() | ForEach-Object { [System.Convert]::ToString($_, 2) }) -join ''
+        $prefixLength = $binarySubnetMask -replace '0+$'
+        $prefixLength = $prefixLength.Length
+
+         New-NetIPAddress `
+        -InterfaceAlias $networkAdapter.Name `
+        -IPAddress $IPAddress `
+        -PrefixLength $prefixLength `
+        -DefaultGateway $DefaultGateway -ErrorAction Stop
 
         Set-DnsClientServerAddress `
             -InterfaceAlias $networkAdapter.Name `
             -ServerAddresses $DNSServers -ErrorAction Stop
 
-        Write-Output "Static IP configuration set successfully."
+        Write-Output "Static IP configuration set successfully." -ForegroundColor Green
 
         # Test basic network connectivity
-        if (-not (Test-NetConnection -ComputerName "8.8.8.8" -Ping -WarningAction SilentlyContinue)) {
-            Write-Error "No network connectivity."
-        }
-
+        try {
+            $ping = Test-Connection -ComputerName "8.8.8.8" -Count 1 -ErrorAction Stop
+            if ($ping.StatusCode -eq 0) {
+                Write-Host "Network connectivity succeeded!" -ForegroundColor Green
+            } else {
+                Write-Error "No network connectivity. Exiting program now..."  -ForegroundColor Red
+                exit
+            }
+} catch {
+    Write-Error "No network connectivity. Exiting Program now..." -ForegroundColor Red
+    exit
+}
     } catch {
-        Write-Error "Failed to set static IP configuration. Error: $_"
+        Write-Error "Failed to set static IP configuration. Error: $_" -ForegroundColor Red
         exit
     }
 }
@@ -66,10 +76,14 @@ foreach ($feature in $features) {
     try {
         if (-not (Get-WindowsFeature -Name $feature).Installed) {
             Install-WindowsFeature -Name $feature -IncludeManagementTools -Confirm:$false -ErrorAction Stop
-            Write-Output "$feature installed successfully."
+            Write-Host "$feature installed successfully." -ForegroundColor Green
+        }
+        else
+        {
+            Write-Host "$feature already installed. Moving on..."-ForegroundColor Yellow
         }
     } catch {
-        Write-Error "Failed to install $feature. Error: $_"
+        Write-Error "Failed to install $feature. Error: $_" -ForegroundColor Red
         exit
     }
 }
@@ -90,7 +104,7 @@ try {
         -ForestMode $lab.ForestMode `
         -Force:$true `
         -NoRebootOnCompletion:$false -ErrorAction Stop
-    Write-Output "Forest installation completed successfully."
+    Write-Host "Forest installation completed successfully." -ForegroundColor Green
 } catch {
     Write-Error "Failed to install AD DS Forest. Error: $_"
     exit
@@ -98,9 +112,9 @@ try {
 
 try {
     Set-DnsServerForwarder -IPAddress $lab.DNSForwarders -UseReversibleEncryption
-    Write-Output "DNS forwarders configured successfully."
+    Write-Host "DNS forwarders configured successfully." -ForegroundColor Green
 } catch {
-    Write-Error "Failed to configure DNS forwarders. Error: $_"
+    Write-Error "Failed to configure DNS forwarders. Error: $_" -ForegroundColor Red
 }
 
 # Reboot the server if required
@@ -132,6 +146,7 @@ Import-Module ActiveDirectory
 # Create users from the text file
 if (Test-Path $lab.UsersFilePath) {
     $users = Get-Content $lab.UsersFilePath
+    Write-Host "Admins are denoted with a `* before username (no spaces)."
     foreach ($user in $users) {
         $isAdmin = $false
         if ($user.StartsWith("*")) {
@@ -171,7 +186,6 @@ if (Test-Path $lab.UsersFilePath) {
 } else {
     Write-Error "Users file not found: $($lab.UsersFilePath)"
 }
-
 
 # Stop transcript logging
 Stop-Transcript

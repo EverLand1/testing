@@ -1,16 +1,6 @@
 {
   "DomainName": "yourdomain.com",
   "NetBIOSName": "YOURDOMAIN",
-  "SafeModeAdministratorPassword": "Password1!",
-  "UserPassword": "Password1!",
-  "AdminPassword": "Password1!",
-  "InstallDNS": true,
-  "DatabasePath": "C:\\Windows\\NTDS",
-  "LogPath": "C:\\Windows\\NTDS",
-  "SysvolPath": "C:\\Windows\\SYSVOL",
-  "ForestMode": "WinThreshold",
-  "RebootOnCompletion": true,
-  "UsersFilePath": "C:\\Users\\Administrator\\Downloads\\users.txt",
   "IPAddress": "192.168.1.10",
   "SubnetMask": "255.255.255.0",
   "DefaultGateway": "192.168.1.1",
@@ -21,7 +11,17 @@
   "DNSForwarders": [
     "1.1.1.1",
     "8.8.8.8"
-  ],
+  ],  
+  "UsersFilePath": "C:\\Users\\Administrator\\Downloads\\users.txt",
+  "SafeModeAdministratorPassword": "Password1!",
+  "UserPassword": "Password1!",
+  "AdminPassword": "Password1!",
+  "InstallDNS": true,
+  "DatabasePath": "C:\\Windows\\NTDS",
+  "LogPath": "C:\\Windows\\NTDS",
+  "SysvolPath": "C:\\Windows\\SYSVOL",
+  "ForestMode": "WinThreshold",
+  "RebootOnCompletion": true,
   "NetworkAdapter": "",
-  "TranscriptLogPath": ".\\transcript_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+  "TranscriptLogPath": ".\\SetupTranscript.log"
 }
