@@ -24,9 +24,9 @@ if (Test-Path $labFilePath) {
 }
 
 Set-TimeZone -Id $lab.TimeZone
-$TranscriptLogPath = "Transcript_$(Get-Date -Format "yyyy-MM-dd_HH-mm-ss").log"
+$TranscriptLogPath = "transcript_$(Get-Date -Format "yyyy-MM-dd_HH-mm-ss").log"
 
-Write-Host "----------------------------------------------------------------------------------------`n"
+Write-Host "`n`n----------------------------------------------------------------------------------------`n"
 Write-Host "Domain Configuration:"
 Write-Host "DomainName: $($lab.DomainName)"
 Write-Host "NetBIOSName: $($lab.NetBIOSName)"
@@ -320,8 +320,6 @@ try {
 }
 
 
-
-
 # Stop transcript logging
 try {
     Stop-Transcript
@@ -329,4 +327,4 @@ try {
     Write-Warning "Logging was disabled in configuration" -ForegroundColor Yellow
 }
 
-Write-Host "Script has completed! The transcript is available at $TranscriptLogPath" -ForegroundColor Green
+Write-Host "Script has completed! The log for this script is available at $TranscriptLogPath" -ForegroundColor Green
